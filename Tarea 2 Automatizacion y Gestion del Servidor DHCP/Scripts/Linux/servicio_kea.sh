@@ -2,7 +2,7 @@
 # ============================================================
 # Tarea 2:  Automatizacion y Gestion del Servidor DHCP
 #   Autor:  Alberto Torres Chaparro
-# Parte 3:  Configuracion del servidor DHCP
+# actualizacion:  Mejora visual de los clientes conectados
 # ============================================================
 
 # --- FUNCIONES DE VALIDACION
@@ -150,12 +150,18 @@ if kea-dhcp4 -t /etc/kea/kea-dhcp4.conf &> /dev/null; then
     
     if systemctl is-active --quiet kea-dhcp4; then
         echo "Estado Final: ACTIVO"
-        echo "--- Clientes Conectados (Leases) ---"
-        # Muestra leases si el archivo existe y no esta vacio
-        if [ -s /var/lib/kea/kea-leases4.csv ]; then
-            cat /var/lib/kea/kea-leases4.csv
+        # --- Actualizacion visual
+        echo "--- Clientes Conectados ---"
+        # Verificamos si el archivo existe y tiene datos reales
+        if [ -f /var/lib/kea/kea-leases4.csv ] && [ "$(wc -l < /var/lib/kea/kea-leases4.csv)" -gt 1 ]; then
+            
+            # Encabezados de la tabla
+            printf "%-18s | %-17s | %s\n" "DIRECCION IP" "MAC ADDRESS" "HOSTNAME"
+            echo "-------------------|-------------------|--------------------"
+            awk -F, 'NR>1 { leases[$1] = sprintf("%-18s | %-17s | %s", $1, $2, $9) } END { for (ip in leases) print leases[ip] }' /var/lib/kea/kea-leases4.csv | sort
+            
         else
-            echo "Sin clientes conectados aun."
+            echo "   (Esperando conexiones...)"
         fi
     else
         echo "Estado Final: FALLO AL INICIAR"
