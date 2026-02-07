@@ -2,83 +2,69 @@
 # ============================================================
 # Tarea 2:  Automatizacion y Gestion del Servidor DHCP
 #   Autor:  Alberto Torres Chaparro
-# actualizacion:  Mejora visual de los clientes conectados
+# Actualizacion:  Implementacion de un menu de correccion selectiva 
+#                 y monitoreo en tiempo real de los clientes conectados
 # ============================================================
 
-# --- FUNCIONES DE VALIDACION
+# --- FUNCIONES DE VALIDACION ---
 
-#Valida que la interfaz exista en el sistema operativo
+# Verifica si la interfaz de red existe en el sistema (ej: enp0s8)
 validar_interfaz() {
-    if [ -d "/sys/class/net/$1" ]; then
-        return 0
-    else
-        return 1
-    fi
+    if [ -d "/sys/class/net/$1" ]; then return 0; else return 1; fi
 }
 
-#Valida formato IP (x.x.x.x)
+# Verifica formato IPv4 (x.x.x.x)
 validar_ip() {
-    local ip=$1
-    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        return 0
-    else
-        return 1
-    fi
+    if [[ $1 =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then return 0; else return 1; fi
 }
 
-#Valida formato Subred CIDR (x.x.x.x/xx)
+# Verifica formato CIDR (x.x.x.x/xx)
 validar_subnet() {
-    local subnet=$1
-    if [[ $subnet =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
-        return 0
-    else
-        return 1
-    fi
+    if [[ $1 =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then return 0; else return 1; fi
 }
 
-#Valida las entradas del usuario
+# --- FUNCION DE CAPTURA DE DATOS ---
+# Pide un dato hasta que sea valido segun su tipo
 solicitar_dato() {
     local mensaje=$1
-    local tipo_validacion=$2
-    local variable_ref=$3
-    local input_usuario
+    local tipo=$2
+    local var_ref=$3
+    local input
 
     while true; do
-        read -p "$mensaje: " input_usuario
-        
-        # Selector de validaciones
-        case $tipo_validacion in
+        read -p "$mensaje: " input
+        case $tipo in
             "interfaz")
-                if validar_interfaz "$input_usuario"; then
-                    eval "$variable_ref='$input_usuario'"
-                    break
-                else
-                    echo "Error: La interfaz '$input_usuario' no existe en este sistema."
-                fi
-                ;;
+                if validar_interfaz "$input"; then eval "$var_ref='$input'"; break; fi
+                echo "Error: La interfaz '$input' no existe en este sistema." ;;
             "ip")
-                if validar_ip "$input_usuario"; then
-                    eval "$variable_ref='$input_usuario'"
-                    break
-                else
-                    echo "Error: Formato IP invalido. Use formato numerico (ej: 192.168.100.50)."
-                fi
-                ;;
+                if validar_ip "$input"; then eval "$var_ref='$input'"; break; fi
+                echo "Error: Formato IP invalido (ej: 192.168.100.50)." ;;
             "subnet")
-                if validar_subnet "$input_usuario"; then
-                    eval "$variable_ref='$input_usuario'"
-                    break
-                else
-                    echo "Error: Formato invalido. Debe incluir mascara (ej: 192.168.100.0/24)."
-                fi
-                ;;
+                if validar_subnet "$input"; then eval "$var_ref='$input'"; break; fi
+                echo "Error: Formato invalido (ej: 192.168.100.0/24)." ;;
         esac
     done
 }
 
+# Muestra la tabla de configuracion actual
+mostrar_resumen() {
+    clear
+    echo "=========================================="
+    echo "          RESUMEN DE CONFIGURACION"
+    echo "=========================================="
+    echo "  1. Interfaz:      $INTERFAZ"
+    echo "  2. Subred:        $SUBNET"
+    echo "  3. IP Inicial:    $IP_START"
+    echo "  4. IP Final:      $IP_END"
+    echo "  5. Gateway:       $GATEWAY"
+    echo "  6. DNS:           $DNS_IP"
+    echo "=========================================="
+}
+
 echo "Comprobando servicio..."
 
-# --- FASE 1 & 2 LA INSTALACION
+# --- FASE 1 & 2: INSTALACION ---
 if rpm -q kea &> /dev/null; then
     echo "El servicio Kea DHCP ya se encuentra instalado."
 else
@@ -94,34 +80,53 @@ else
     fi
 fi
 
-# --- FASE 3: CONFIGURACION
+# --- FASE 3: ENTRADA INICIAL DE DATOS ---
 echo ""
 echo "--- Configuracion de Parametros de Red ---"
-echo "Ingrese los datos solicitados. El sistema validara cada entrada."
+solicitar_dato "Ingrese Interfaz (ej: enp0s8)" "interfaz" INTERFAZ
+solicitar_dato "Ingrese Subred CIDR (ej: 192.168.100.0/24)" "subnet" SUBNET
+solicitar_dato "Ingrese IP Inicial (ej: 192.168.100.50)" "ip" IP_START
+solicitar_dato "Ingrese IP Final (ej: 192.168.100.150)" "ip" IP_END
+solicitar_dato "Ingrese Gateway (ej: 192.168.100.1)" "ip" GATEWAY
+solicitar_dato "Ingrese DNS (ej: 192.168.100.20)" "ip" DNS_IP
 
-# aqui el script no avanza hasta tener datos validos
-solicitar_dato "1. Interfaz de Red  (Ej: enp0s8)" "interfaz" INTERFAZ
-solicitar_dato "2. Subred CIDR      (Ej: 192.168.100.0/24)" "subnet" SUBNET
-solicitar_dato "3. IP Inicial       (Ej: 192.168.100.50)" "ip" IP_START
-solicitar_dato "4. IP Final         (Ej: 192.168.100.150)" "ip" IP_END
-solicitar_dato "5. Puerta de Enlace (Ej: 192.168.100.1)" "ip" GATEWAY
-solicitar_dato "6. Servidor DNS     (Ej: 192.168.100.20)" "ip" DNS_IP
+# --- FASE 4: CONFIRMACION Y EDICION SELECTIVA ---
+# Bucle que permite corregir datos especificos antes de continuar
+while true; do
+    mostrar_resumen
+    read -p "¿Son correctos estos datos? (s/n): " CONFIRMACION
+    
+    if [[ "$CONFIRMACION" =~ ^[sS]$ ]]; then
+        break
+    else
+        echo ""
+        read -p "Ingrese el numero de la opcion que desea corregir (1-6): " OPCION
+        case $OPCION in
+            1) solicitar_dato "Nueva Interfaz" "interfaz" INTERFAZ ;;
+            2) solicitar_dato "Nueva Subred" "subnet" SUBNET ;;
+            3) solicitar_dato "Nueva IP Inicial" "ip" IP_START ;;
+            4) solicitar_dato "Nueva IP Final" "ip" IP_END ;;
+            5) solicitar_dato "Nuevo Gateway" "ip" GATEWAY ;;
+            6) solicitar_dato "Nuevo DNS" "ip" DNS_IP ;;
+            *) echo "Opcion invalida." ; sleep 1 ;;
+        esac
+    fi
+done
 
-echo "Datos validos. Generando archivo de configuracion..."
+echo ""
+echo "Generando archivo de configuracion..."
 
+# Respaldo de seguridad
 [ -f /etc/kea/kea-dhcp4.conf ] && cp /etc/kea/kea-dhcp4.conf /etc/kea/kea-dhcp4.conf.bak
 
+# Generacion del JSON de configuracion
 cat > /etc/kea/kea-dhcp4.conf <<EOF
 {
 "Dhcp4": {
-    "interfaces-config": {
-        "interfaces": [ "$INTERFAZ" ]
-    },
+    "interfaces-config": { "interfaces": [ "$INTERFAZ" ] },
     "lease-database": {
-        "type": "memfile",
-        "persist": true,
-        "name": "/var/lib/kea/kea-leases4.csv",
-        "lfc-interval": 3600
+        "type": "memfile", "persist": true,
+        "name": "/var/lib/kea/kea-leases4.csv", "lfc-interval": 3600
     },
     "valid-lifetime": 4000,
     "option-data": [
@@ -130,8 +135,7 @@ cat > /etc/kea/kea-dhcp4.conf <<EOF
     ],
     "subnet4": [
         {
-            "id": 1,
-            "subnet": "$SUBNET",
+            "id": 1, "subnet": "$SUBNET",
             "pools": [ { "pool": "$IP_START - $IP_END" } ]
         }
     ]
@@ -139,9 +143,12 @@ cat > /etc/kea/kea-dhcp4.conf <<EOF
 }
 EOF
 
-echo "Validando integridad del archivo JSON..."
+# --- Fase 5: Validacion
+echo "Validando sintaxis..."
+
+# Validamos la configuracion generada antes de reiniciar
 if kea-dhcp4 -t /etc/kea/kea-dhcp4.conf &> /dev/null; then
-    echo "Configuracion valida. Reiniciando servicio..."
+    echo "Configuracion valida. Aplicando cambios..."
     
     firewall-cmd --add-service=dhcp --permanent &> /dev/null
     firewall-cmd --reload &> /dev/null
@@ -150,24 +157,34 @@ if kea-dhcp4 -t /etc/kea/kea-dhcp4.conf &> /dev/null; then
     
     if systemctl is-active --quiet kea-dhcp4; then
         echo "Estado Final: ACTIVO"
-        # --- Actualizacion visual
-        echo "--- Clientes Conectados ---"
-        # Verificamos si el archivo existe y tiene datos reales
-        if [ -f /var/lib/kea/kea-leases4.csv ] && [ "$(wc -l < /var/lib/kea/kea-leases4.csv)" -gt 1 ]; then
+        echo ""
+        echo ">>> Iniciando Monitor en Tiempo Real..."
+        sleep 2
+
+        # Bucle de monitoreo
+        while true; do
+            clear
+            echo "================================================================"
+            echo "   MONITOR DHCP KEA - $(date '+%H:%M:%S')"
+            echo "   (Presione Ctrl+C para salir)"
+            echo "================================================================"
             
-            # Encabezados de la tabla
-            printf "%-18s | %-17s | %s\n" "DIRECCION IP" "MAC ADDRESS" "HOSTNAME"
-            echo "-------------------|-------------------|--------------------"
-            awk -F, 'NR>1 { leases[$1] = sprintf("%-18s | %-17s | %s", $1, $2, $9) } END { for (ip in leases) print leases[ip] }' /var/lib/kea/kea-leases4.csv | sort
-            
-        else
-            echo "   (Esperando conexiones...)"
-        fi
+            if [ -f /var/lib/kea/kea-leases4.csv ] && [ "$(wc -l < /var/lib/kea/kea-leases4.csv)" -gt 1 ]; then
+                printf "%-18s | %-17s | %s\n" "DIRECCION IP" "MAC ADDRESS" "HOSTNAME"
+                echo "-------------------|-------------------|--------------------"
+                awk -F, 'NR>1 { leases[$1] = sprintf("%-18s | %-17s | %s", $1, $2, $9) } END { for (ip in leases) print leases[ip] }' /var/lib/kea/kea-leases4.csv | sort
+            else
+                echo "   (Esperando clientes... Conecte un dispositivo)"
+            fi
+            # Actualiza cada 3 segundos
+            sleep 3
+        done
     else
         echo "Estado Final: FALLO AL INICIAR"
-        echo "Revise los logs con: journalctl -xeu kea-dhcp4"
+        echo "Revise logs: journalctl -xeu kea-dhcp4"
     fi
 else
-    echo "Error: Kea rechazo la configuracion generada."
+    echo "Error Critico: Kea rechazo la configuracion generada."
+    echo "Revise que la Subred coincida con el rango de IPs."
     exit 1
 fi
