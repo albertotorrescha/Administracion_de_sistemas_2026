@@ -157,3 +157,57 @@ catch {
     Write-Host "Error: $($_.Exception.Message)" 
     exit 1
 }
+
+
+# --- Monitoreo en tiempo real
+Write-Host ""
+Write-Host "--- Iniciando Monitor ---"
+Start-Sleep -Seconds 1
+
+while ($true) {
+    Clear-Host
+    
+    $clientes = @(Get-DhcpServerv4Lease -ScopeId $RedID -ErrorAction SilentlyContinue)
+    $hora = Get-Date -Format "HH:mm:ss"
+    
+    # --- ENCABEZADO ---
+    Write-Host "================================================================"
+    Write-Host "   MONITOR DHCP SERVER  |  Actualizado: $hora"
+    Write-Host "   Ambito: $RedID ($NombreAmbito)"
+    Write-Host "================================================================"
+    
+    if ($clientes.Count -gt 0) {
+        # --- TABLA DE CLIENTES ---
+        # Cabecera
+        Write-Host ("{0,-16} {1,-20} {2,-18} {3,-10}" -f "IP ADDRESS", "HOSTNAME", "MAC ADDRESS", "EXPIRA")
+        Write-Host "----------------------------------------------------------------"
+
+        foreach ($cliente in $clientes) {
+            $expira = $cliente.LeaseExpiryTime.ToString("HH:mm:ss")
+            
+            # Filas de datos 
+            Write-Host ("{0,-16}" -f $cliente.IPAddress) -NoNewline
+            Write-Host ("{0,-20}" -f $cliente.HostName)  -NoNewline
+            Write-Host ("{0,-18}" -f $cliente.ClientId)  -NoNewline
+            Write-Host ("{0,-10}" -f $expira)
+        }
+        
+        Write-Host ""
+        Write-Host " [ TOTAL CLIENTES CONECTADOS: $($clientes.Count) ]"
+    }
+    else {
+        # --- MODO ESPERA ---
+        Write-Host ""
+        Write-Host "    Escuchando red..."
+        Write-Host ""
+        Write-Host "    [!] Esperando solicitudes DHCP..."
+        Write-Host ""
+    }
+    
+    # Pie de pagina
+    Write-Host ""
+    Write-Host "================================================================"
+    Write-Host " [CTRL+C] para detener el script."
+    
+    Start-Sleep -Seconds 3
+}
