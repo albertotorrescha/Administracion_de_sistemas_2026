@@ -6,7 +6,7 @@
 #   de un servidor DNS utilizando BIND9 en Oracle Linux.
 #========================================================================
 
-#Función para ver el estado del servicio DNS
+# Función para ver el estado del servicio DNS
 estado_dns() {
     clear
     echo "========================================"
@@ -22,7 +22,28 @@ estado_dns() {
     systemctl status named --no-pager | grep Active
     read -p "Enter..."
 }
+# Función para instalar el servicio DNS
+instalar_dns() {
 
+    if rpm -q bind &> /dev/null; then
+        echo "El servicio DNS ya está instalado."
+        read -p "Enter..."
+        return
+    fi
+
+    echo "Instalando BIND..."
+    dnf install -y bind bind-utils &> /dev/null
+
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}[EXITO] Instalación completada.${NC}"
+        systemctl enable named &> /dev/null
+        systemctl start named
+    else
+        echo -e "${RED}[ERROR] Falló la instalación.${NC}"
+    fi
+
+    read -p "Enter..."
+}
 menu_dns(){
     while true; do
         clear
@@ -30,12 +51,14 @@ menu_dns(){
         echo "               SERVICIO DNS"
         echo "========================================"
         echo "1) Estado del servicio DNS"
-        echo "2) Salir"
+        echo "2) Instalar el servicio DNS"
+        echo "3) Salir"
         echo "========================================"
         read -p "Selecciona una opción: " opcion
         case $opcion in
             1) estado_dns ;;
-            2) echo "Saliendo del menú DNS..."; break ;;
+            2) instalar_dns ;;
+            3) echo "Saliendo del menú DNS..."; break ;;
             *) echo "Opción no válida. Inténtalo de nuevo." ;;
         esac
     done
